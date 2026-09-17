@@ -1,4 +1,4 @@
-```java
+
 package com.example.wallet_service;
 
 import com.example.wallet_service.entity.Wallet;
@@ -402,4 +402,4 @@ class TransactionIntegrationTest {
     ) {
     }
 }
-```
+
