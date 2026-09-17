@@ -1,3 +1,4 @@
+```java
 package com.example.wallet_service;
 
 import com.example.wallet_service.entity.Wallet;
@@ -39,9 +40,15 @@ class TransactionIntegrationTest {
         walletRepository.deleteAll();
     }
 
+    // =========================================================
+    // TEST 1
+    // =========================================================
+
     @Test
     @DisplayName("Processes a single valid debit transaction successfully.")
     void processesSingleValidDebitSuccessfully() {
+
+        // Arrange
 
         UUID userId = UUID.randomUUID();
         UUID transactionId = UUID.randomUUID();
@@ -52,6 +59,8 @@ class TransactionIntegrationTest {
         );
 
         walletRepository.save(wallet);
+
+        // Act
 
         webTestClient
                 .post()
@@ -68,15 +77,20 @@ class TransactionIntegrationTest {
                 .expectStatus()
                 .isOk();
 
+        // Assert
+
         Wallet updatedWallet =
-                walletRepository.findByUserId(userId).orElseThrow();
+                walletRepository
+                        .findByUserId(userId)
+                        .orElseThrow();
 
         System.out.println(
                 "TEST: Processes a single valid debit transaction successfully."
         );
 
         System.out.println(
-                "RESULT: Final balance = ₹" + updatedWallet.getBalance()
+                "RESULT: Final balance = ₹"
+                        + updatedWallet.getBalance()
         );
 
         assertEquals(
@@ -90,9 +104,16 @@ class TransactionIntegrationTest {
         );
     }
 
+    // =========================================================
+    // TEST 2
+    // =========================================================
+
     @Test
     @DisplayName("Sends 3 identical transaction IDs simultaneously. Ensures the balance is only deducted once.")
-    void sendsThreeIdenticalTransactionsSimultaneously() throws Exception {
+    void sendsThreeIdenticalTransactionsSimultaneously()
+            throws Exception {
+
+        // Arrange
 
         UUID userId = UUID.randomUUID();
         UUID transactionId = UUID.randomUUID();
@@ -123,16 +144,25 @@ class TransactionIntegrationTest {
                 webTestClient
                         .post()
                         .uri("/api/v1/transactions/process")
-                        .header("Content-Type", "application/json")
+                        .header(
+                                "Content-Type",
+                                "application/json"
+                        )
                         .bodyValue(requestJson)
                         .exchange()
                         .returnResult(Void.class)
                         .getStatus()
                         .value();
 
+        // Act
+
         List<Future<Integer>> results =
                 executorService.invokeAll(
-                        List.of(request, request, request)
+                        List.of(
+                                request,
+                                request,
+                                request
+                        )
                 );
 
         executorService.shutdown();
@@ -147,37 +177,45 @@ class TransactionIntegrationTest {
                 })
                 .toList();
 
+        // Assert
+
         Wallet finalWallet =
                 walletRepository
                         .findByUserId(userId)
                         .orElseThrow();
 
-        long successfulRequests = statuses.stream()
-                .filter(status -> status == 200)
-                .count();
+        long successfulRequests =
+                statuses.stream()
+                        .filter(status -> status == 200)
+                        .count();
 
-        long conflictRequests = statuses.stream()
-                .filter(status -> status == 409)
-                .count();
+        long conflictRequests =
+                statuses.stream()
+                        .filter(status -> status == 409)
+                        .count();
 
         System.out.println(
                 "TEST: Sends 3 identical transaction IDs simultaneously."
         );
 
         System.out.println(
-                "RESULT: HTTP statuses = " + statuses
+                "RESULT: HTTP statuses = "
+                        + statuses
         );
 
         System.out.println(
-                "RESULT: Successful requests = " + successfulRequests
+                "RESULT: Successful requests = "
+                        + successfulRequests
         );
 
         System.out.println(
-                "RESULT: Conflict requests = " + conflictRequests
+                "RESULT: Conflict requests = "
+                        + conflictRequests
         );
 
         System.out.println(
-                "RESULT: Final balance = ₹" + finalWallet.getBalance()
+                "RESULT: Final balance = ₹"
+                        + finalWallet.getBalance()
         );
 
         System.out.println(
@@ -201,6 +239,161 @@ class TransactionIntegrationTest {
         );
     }
 
+    // =========================================================
+    // TEST 3
+    // =========================================================
+
+    @Test
+    @DisplayName("Sends 10 concurrent debit requests of ₹100 for a wallet with a ₹500 balance. Ensures the final balance is exactly ₹0 and 5 requests fail with insufficient funds.")
+    void sendsTenConcurrentDebitsAndPreventsNegativeBalance()
+            throws Exception {
+
+        // Arrange
+
+        UUID userId = UUID.randomUUID();
+
+        Wallet wallet = new Wallet(
+                userId,
+                new BigDecimal("500.00")
+        );
+
+        walletRepository.save(wallet);
+
+        ExecutorService executorService =
+                Executors.newFixedThreadPool(10);
+
+        Callable<Integer> request = () -> {
+
+            UUID transactionId =
+                    UUID.randomUUID();
+
+            String requestJson = """
+                    {
+                        "transactionId": "%s",
+                        "userId": "%s",
+                        "amount": 100.00,
+                        "type": "DEBIT"
+                    }
+                    """.formatted(
+                    transactionId,
+                    userId
+            );
+
+            return webTestClient
+                    .post()
+                    .uri("/api/v1/transactions/process")
+                    .header(
+                            "Content-Type",
+                            "application/json"
+                    )
+                    .bodyValue(requestJson)
+                    .exchange()
+                    .returnResult(Void.class)
+                    .getStatus()
+                    .value();
+        };
+
+        // Act
+
+        List<Future<Integer>> results =
+                executorService.invokeAll(
+                        List.of(
+                                request,
+                                request,
+                                request,
+                                request,
+                                request,
+                                request,
+                                request,
+                                request,
+                                request,
+                                request
+                        )
+                );
+
+        executorService.shutdown();
+
+        List<Integer> statuses = results.stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (Exception exception) {
+                        throw new RuntimeException(exception);
+                    }
+                })
+                .toList();
+
+        // Assert
+
+        Wallet finalWallet =
+                walletRepository
+                        .findByUserId(userId)
+                        .orElseThrow();
+
+        long successfulRequests =
+                statuses.stream()
+                        .filter(status -> status == 200)
+                        .count();
+
+        long insufficientFundsRequests =
+                statuses.stream()
+                        .filter(status -> status == 422)
+                        .count();
+
+        System.out.println(
+                "TEST: Sends 10 concurrent debit requests of ₹100."
+        );
+
+        System.out.println(
+                "RESULT: HTTP statuses = "
+                        + statuses
+        );
+
+        System.out.println(
+                "RESULT: Successful requests = "
+                        + successfulRequests
+        );
+
+        System.out.println(
+                "RESULT: Insufficient-funds requests = "
+                        + insufficientFundsRequests
+        );
+
+        System.out.println(
+                "RESULT: Final balance = ₹"
+                        + finalWallet.getBalance()
+        );
+
+        System.out.println(
+                "RESULT: Transactions stored = "
+                        + transactionRepository.count()
+        );
+
+        assertEquals(
+                new BigDecimal("0.00"),
+                finalWallet.getBalance()
+        );
+
+        assertEquals(
+                5,
+                successfulRequests
+        );
+
+        assertEquals(
+                5,
+                insufficientFundsRequests
+        );
+
+        assertEquals(
+                5,
+                transactionRepository.count()
+        );
+    }
+
+    // =========================================================
+    // TEST REQUEST RECORD
+    // =========================================================
+
     record TransactionRequestForTest(
             UUID transactionId,
             UUID userId,
@@ -209,4 +402,4 @@ class TransactionIntegrationTest {
     ) {
     }
 }
-
+```
