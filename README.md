@@ -7,7 +7,7 @@ This project was developed as part of the **Java Backend Intern Assignment – I
 ## Tech Stack
 
 * Java 21
-* Spring Boot 4.1.1
+* Spring Boot 4.0.7
 * Spring Data JPA / Hibernate
 * H2 in-memory database
 * Maven
